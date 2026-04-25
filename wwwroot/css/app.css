@@ -3,7 +3,7 @@
    .NET 10 / Blazor Server
    ══════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
     --bg: #0d0f14;
@@ -24,7 +24,7 @@
     --agent-bg: #161a23;
     --sidebar-w: 240px;
     --font-mono: 'JetBrains Mono', monospace;
-    --font-ui: 'Syne', sans-serif;
+    --font-ui: "Segoe UI", Inter, Arial, sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,10 +78,10 @@ html, body {
 }
 
 .logo-title {
-    font-weight: 800;
-    font-size: 15px;
+    font-weight: 700;
+    font-size: 18px;
     color: var(--accent);
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
     line-height: 1;
 }
@@ -118,7 +118,7 @@ html, body {
     border: 1px solid transparent;
     border-radius: 6px;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 13px;
     font-family: var(--font-ui);
     cursor: pointer;
     text-align: left;
@@ -174,24 +174,25 @@ html, body {
 }
 
 .chat-header {
-    padding: 16px 24px;
+    padding: 14px 30px;
     border-bottom: 1px solid var(--border);
     background: var(--bg2);
     flex-shrink: 0;
 }
 
 .header-title {
-    font-size: 16px;
-    font-weight: 800;
+    font-size: 20px;
+    font-weight: 650;
     color: var(--text);
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
+    line-height: 1.25;
 }
 
 .header-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    margin-top: 2px;
+    margin-top: 4px;
 }
 
 /* ── CHAT AREA ── */
@@ -218,8 +219,8 @@ html, body {
 }
 
 .empty-icon { font-size: 48px; margin-bottom: 12px; }
-.empty-title { font-size: 20px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
-.empty-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+.empty-title { font-size: 24px; font-weight: 650; color: var(--text); margin-bottom: 10px; letter-spacing: 0; }
+.empty-text { font-size: 15px; color: var(--text-muted); line-height: 1.7; }
 .empty-text em { color: var(--accent); font-style: normal; }
 
 /* ── MESSAGES ── */
