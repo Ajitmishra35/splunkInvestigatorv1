@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.log
+run.log
+run.err.log
+appsettings.Development.json
+appsettings.Local.json
+

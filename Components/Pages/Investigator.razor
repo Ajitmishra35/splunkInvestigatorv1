@@ -1,0 +1,409 @@
+@page "/"
+@rendermode InteractiveServer
+@using SplunkInvestigator.Models
+@using SplunkInvestigator.Services
+@using Markdig
+@inject AgentService Agent
+@inject LogFileService LogService
+
+<PageTitle>Splunk Investigator Agent</PageTitle>
+
+<div class="app-shell">
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar">
+        <div class="logo">
+            <span class="logo-icon">⚡</span>
+            <div>
+                <div class="logo-title">Splunk</div>
+                <div class="logo-sub">Investigator Agent</div>
+            </div>
+        </div>
+
+        <!-- Upload Zone -->
+        <div class="sidebar-section">
+            <div class="section-label">Upload Log File</div>
+            <label class="upload-zone @(_isDragOver ? "drag-over" : "")">
+                <InputFile OnChange="HandleFileUpload"
+                           accept=".json"
+                           @ondragenter="() => _isDragOver = true"
+                           @ondragleave="() => _isDragOver = false"
+                           @ondrop="() => _isDragOver = false"
+                           disabled="@_isUploading" />
+                @if (_isUploading)
+                {
+                    <span class="upload-icon">⏳</span>
+                    <span class="upload-text">Uploading...</span>
+                }
+                else
+                {
+                    <span class="upload-icon">📂</span>
+                    <span class="upload-text">Drop JSON or click</span>
+                    <span class="upload-hint">Any Splunk export file</span>
+                }
+            </label>
+
+            @if (_uploadHistory.Count > 0)
+            {
+                <div class="upload-list">
+                    @foreach (var f in _uploadHistory)
+                    {
+                        <div class="upload-item @(f.Success ? "ok" : "err")">
+                            <span class="upload-item-name" title="@f.FileName">@TruncateName(f.FileName)</span>
+                            @if (f.Success)
+                            {
+                                <span class="upload-item-count">@f.EntryCount</span>
+                                <button class="upload-remove" @onclick="() => RemoveFile(f.FileName)" title="Remove">✕</button>
+                            }
+                            else
+                            {
+                                <span class="upload-item-err" title="@f.ErrorMessage">!</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Quick Queries -->
+        <div class="sidebar-section">
+            <div class="section-label">Quick Queries</div>
+            @foreach (var q in _quickQueries)
+            {
+                <button class="quick-btn" @onclick="() => UseQuickQuery(q.Query)">
+                    <span class="qicon">@q.Icon</span>
+                    @q.Label
+                </button>
+            }
+        </div>
+
+        <!-- Log Status -->
+        <div class="sidebar-section">
+            <div class="section-label">Log Status</div>
+            <div class="stats-badge">@_logStats</div>
+        </div>
+
+        <div class="sidebar-section">
+            <button class="clear-btn" @onclick="ClearConversation">🗑 Clear Conversation</button>
+            <button class="clear-btn" @onclick="ReloadLogs" style="margin-top:6px">🔄 Reload Disk Logs</button>
+        </div>
+    </aside>
+
+    <!-- ── MAIN CHAT ── -->
+    <main class="main-panel">
+        <div class="chat-header">
+            <div class="header-title">Banking Log Investigation</div>
+            <div class="header-sub">Powered by Azure OpenAI · Microsoft.Extensions.AI · .NET 10</div>
+        </div>
+
+        <div class="chat-area" @ref="_chatContainer">
+            @if (_messages.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">🔍</div>
+                    <div class="empty-title">Ready to Investigate</div>
+                    <div class="empty-text">
+                        Upload any Splunk JSON export using the panel on the left,
+                        then ask about a transaction — e.g. <em>Investigate TXN-98765</em>
+                        or <em>Show all ERROR events</em>.
+                    </div>
+                </div>
+            }
+
+            @foreach (var msg in _messages)
+            {
+                <div class="message @msg.Role @(msg.IsToolCall ? "tool-msg" : "")">
+                    @if (msg.IsToolCall)
+                    {
+                        <div class="tool-badge">🔧 @msg.ToolName</div>
+                    }
+                    else
+                    {
+                        <div class="msg-avatar">@(msg.Role == "user" ? "👤" : "🤖")</div>
+                        <div class="msg-bubble">
+                            <div class="msg-content">
+                                @if (msg.Role == "assistant")
+                                {
+                                    @((MarkupString)RenderMarkdown(msg.Content))
+                                }
+                                else
+                                {
+                                    @msg.Content
+                                }
+
+                                @if (msg.LogRows.Count > 0)
+                                {
+                                    <div class="log-grid-panel">
+                                        <div class="log-grid-head">
+                                            <span>@(msg.GridTitle ?? "Matched logs")</span>
+                                            <span>@msg.LogRows.Count rows</span>
+                                        </div>
+                                        <div class="log-grid-scroll">
+                                            <table class="log-grid">
+                                                <thead>
+                                                    <tr>
+                                                        @foreach (var col in GetGridColumns(msg.LogRows))
+                                                        {
+                                                            <th>@col</th>
+                                                        }
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var row in msg.LogRows)
+                                                    {
+                                                        <tr class="@GetLevelClass(row.Level)">
+                                                            @foreach (var col in GetGridColumns(msg.LogRows))
+                                                            {
+                                                                <td title="@GetCell(row, col)">@GetCell(row, col)</td>
+                                                            }
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="msg-time">@msg.Timestamp.ToString("HH:mm:ss")</div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_isStreaming)
+            {
+                <div class="message assistant">
+                    <div class="msg-avatar">🤖</div>
+                    <div class="msg-bubble">
+                        <div class="msg-content">
+                            @if (!string.IsNullOrEmpty(_streamingBuffer))
+                            {
+                                @((MarkupString)RenderMarkdown(_streamingBuffer))
+                            }
+                            else
+                            {
+                                <span class="thinking">
+                                    <span class="dot">●</span><span class="dot">●</span><span class="dot">●</span>
+                                    <em>@_statusMessage</em>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- ── INPUT BAR ── -->
+        <div class="input-area">
+            <textarea class="input-box"
+                placeholder="Investigate TXN-98765 · Show all ERROR events · Find fraud events · List loaded files"
+                @bind="_userInput"
+                @bind:event="oninput"
+                @onkeydown="HandleKeyDown"
+                rows="2"
+                disabled="@_isStreaming" />
+            <button class="send-btn"
+                    @onclick="SendMessage"
+                    disabled="@(_isStreaming || string.IsNullOrWhiteSpace(_userInput))">
+                @(_isStreaming ? "⏳" : "▶")
+            </button>
+        </div>
+    </main>
+</div>
+
+@code {
+    private List<ChatMessage> _messages = [];
+    private string _userInput = string.Empty;
+    private bool _isStreaming = false;
+    private string _streamingBuffer = string.Empty;
+    private string _statusMessage = "Thinking...";
+    private string _logStats = "Loading...";
+    private ElementReference _chatContainer;
+
+    private bool _isUploading = false;
+    private bool _isDragOver = false;
+    private List<UploadedLogFile> _uploadHistory = [];
+
+    private record QuickQuery(string Icon, string Label, string Query);
+    private readonly List<QuickQuery> _quickQueries =
+    [
+        new("🔍", "Investigate loan",       "Investigate LOAN-20260425-001 and give me a full report"),
+        new("🔍", "Investigate payment",    "Investigate TXN-98765 and give me a full report"),
+        new("🚨", "Transfer errors",        "Show transfer-service container errors"),
+        new("🚨", "All errors",             "Show me all ERROR level events across all loaded log files"),
+        new("🛑", "Blocked / Fraud",        "Find all BLOCKED or FRAUD events across payments and transfers"),
+        new("🏦", "Rejected loans",         "Show all rejected loan events"),
+        new("📊", "Statistics",             "Give me a full statistics overview of all loaded log files"),
+        new("📁", "Loaded files",           "List all log files currently loaded"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshStats();
+    }
+
+    // ── File upload ──────────────────────────────────────────────────────────
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        _isUploading = true;
+        StateHasChanged();
+
+        foreach (var file in e.GetMultipleFiles(maximumFileCount: 10))
+        {
+            // 50 MB max per file
+            await using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            var result = await LogService.AddUploadedLogsAsync(file.Name, stream);
+            // Show a system message in chat
+            _messages.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = result.Success
+                    ? $"✅ **{file.Name}** loaded — **{result.EntryCount} log entries** added to the search index."
+                    : $"⚠️ Failed to load **{file.Name}**: {result.ErrorMessage}"
+            });
+        }
+
+        _isUploading = false;
+        _isDragOver = false;
+        _uploadHistory = LogService.UploadHistory.ToList();
+        await RefreshStats();
+    }
+
+    private async Task RemoveFile(string fileName)
+    {
+        LogService.RemoveUploadedFile(fileName);
+        _uploadHistory = LogService.UploadHistory.ToList();
+        await RefreshStats();
+    }
+
+    // ── Chat ─────────────────────────────────────────────────────────────────
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_userInput) || _isStreaming) return;
+
+        var query = _userInput.Trim();
+        _userInput = string.Empty;
+        _isStreaming = true;
+        _streamingBuffer = string.Empty;
+        _statusMessage = "Searching logs...";
+        var displayRows = await LogService.SearchForDisplayAsync(query);
+        var agentQuery = BuildAgentQuery(query, displayRows);
+
+        _messages.Add(new ChatMessage { Role = "user", Content = query });
+        StateHasChanged();
+
+        try
+        {
+            await foreach (var chunk in Agent.InvestigateStreamAsync(agentQuery, _messages))
+            {
+                _streamingBuffer += chunk;
+                _statusMessage = "Generating report...";
+                StateHasChanged();
+                await Task.Delay(5);
+            }
+
+            _messages.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = _streamingBuffer,
+                GridTitle = displayRows.Count > 0 ? $"Rows matching \"{query}\"" : null,
+                LogRows = displayRows
+            });
+        }
+        catch (Exception ex)
+        {
+            _messages.Add(new ChatMessage { Role = "assistant", Content = $"⚠️ Error: {ex.Message}" });
+        }
+        finally
+        {
+            _streamingBuffer = string.Empty;
+            _isStreaming = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await SendMessage();
+    }
+
+    private void UseQuickQuery(string query)
+    {
+        _userInput = query;
+        StateHasChanged();
+    }
+
+    private void ClearConversation()
+    {
+        _messages.Clear();
+        _streamingBuffer = string.Empty;
+    }
+
+    private async Task ReloadLogs()
+    {
+        LogService.InvalidateDiskCache();
+        await RefreshStats();
+    }
+
+    private async Task RefreshStats()
+    {
+        _logStats = await LogService.GetLogStatisticsAsync();
+        _uploadHistory = LogService.UploadHistory.ToList();
+        StateHasChanged();
+    }
+
+    private static string RenderMarkdown(string md)
+    {
+        var pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+        return Markdown.ToHtml(md, pipeline);
+    }
+
+    private static string BuildAgentQuery(string query, List<GenericLogEntry> rows)
+    {
+        if (rows.Count == 0)
+            return query;
+
+        var preview = rows.Take(80).Select(r => r.ToCleanDict()).ToList();
+        return $"""
+            {query}
+
+            The UI matched {rows.Count} log rows for this request. Analyze these matched rows and summarize patterns, levels, statuses, key refs, and notable issues. The UI will render the raw rows in a grid, so do not dump every row verbatim.
+
+            Matched rows preview:
+            {System.Text.Json.JsonSerializer.Serialize(preview)}
+            """;
+    }
+
+    private static IReadOnlyList<string> GetGridColumns(List<GenericLogEntry> rows)
+    {
+        var preferred = new[]
+        {
+            "_time", "index", "level", "container", "pod", "source", "host",
+            "event", "status", "transfer_ref", "transaction_ref", "loan_ref",
+            "scheme", "transfer_type", "error_code", "message"
+        };
+
+        var all = rows
+            .SelectMany(r => r.RawFields.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return preferred
+            .Where(all.Contains)
+            .Concat(all.Except(preferred).OrderBy(x => x))
+            .ToList();
+    }
+
+    private static string GetCell(GenericLogEntry row, string col)
+        => row.RawFields.TryGetValue(col, out var value) ? value : "";
+
+    private static string GetLevelClass(string? level)
+        => level?.Equals("ERROR", StringComparison.OrdinalIgnoreCase) == true ? "row-error"
+         : level?.Equals("WARN", StringComparison.OrdinalIgnoreCase) == true ? "row-warn"
+         : "";
+
+    private static string TruncateName(string name, int max = 20)
+        => name.Length <= max ? name : name[..17] + "...";
+}
