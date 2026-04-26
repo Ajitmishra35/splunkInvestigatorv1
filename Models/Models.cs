@@ -56,7 +56,15 @@ public class GenericLogEntry
     public bool Matches(string key, string value)
     {
         var v = Get(key);
-        return v != null && v.Equals(value, StringComparison.OrdinalIgnoreCase);
+        if (v is null) return false;
+
+        if (decimal.TryParse(v, out var actualNumber) &&
+            decimal.TryParse(value, out var expectedNumber))
+        {
+            return actualNumber == expectedNumber;
+        }
+
+        return v.Equals(value, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Serialize only non-null fields for sending to AI (clean output).</summary>
