@@ -23,6 +23,10 @@
     <PackageReference Include="Qdrant.Client" Version="1.12.0" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UseVendoredBlazorAssets)' != 'true'">
+    <Content Remove="wwwroot\_framework\**\*" />
+  </ItemGroup>
+
   <!-- Copy sample logs to output -->
   <ItemGroup>
     <Content Remove="SampleLogs\**\*" />

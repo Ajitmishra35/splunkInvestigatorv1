@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Google.Protobuf.Collections;
 using Grpc.Core;
@@ -99,16 +101,19 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
         try
         {
             var exists = await _client.CollectionExistsAsync(name);
-            if (exists) return;
+            if (!exists)
+            {
+                await _client.CreateCollectionAsync(name,
+                    new VectorParams
+                    {
+                        Size     = VectorSize,
+                        Distance = Distance.Cosine
+                    });
 
-            await _client.CreateCollectionAsync(name,
-                new VectorParams
-                {
-                    Size     = VectorSize,
-                    Distance = Distance.Cosine
-                });
+                _logger.LogInformation("Created Qdrant collection: {Name}", name);
+            }
 
-            _logger.LogInformation("Created Qdrant collection: {Name}", name);
+            await EnsurePayloadIndexesAsync(name);
         }
         catch (Exception ex)
         {
@@ -164,7 +169,7 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
 
                 points.Add(new PointStruct
                 {
-                    Id      = new PointId { Uuid = Guid.NewGuid().ToString() },
+                    Id      = new PointId { Uuid = StablePointId(domain, entry) },
                     Vectors = new Vectors { Vector = new Vector { Data = { vectors[i] } } },
                     Payload = { payload }
                 });
@@ -200,7 +205,7 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
                         Field = new FieldCondition
                         {
                             Key   = "ref_value",
-                            Match = new Match { Text = refValue }
+                            Match = MatchKeyword(refValue)
                         }
                     }
                 }
@@ -248,7 +253,7 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
                     Field = new FieldCondition
                     {
                         Key   = kv.Key,
-                        Match = new Match { Keyword = kv.Value }
+                        Match = MatchKeyword(kv.Value)
                     }
                 })
                 .ToList();
@@ -337,7 +342,7 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
                     Field = new FieldCondition
                     {
                         Key   = kv.Key,
-                        Match = new Match { Keyword = kv.Value }
+                        Match = MatchKeyword(kv.Value)
                     }
                 })
                 .ToList();
@@ -448,14 +453,60 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
     private string CollectionName(string domain)
         => $"{_prefix}-{domain.ToLowerInvariant()}";
 
+    private static string StablePointId(string domain, GenericLogEntry entry)
+    {
+        var refValue = entry.RawFields
+            .FirstOrDefault(kv => kv.Key.EndsWith("_ref", StringComparison.OrdinalIgnoreCase)
+                                  && !string.IsNullOrWhiteSpace(kv.Value)
+                                  && kv.Value != "null")
+            .Value;
+
+        var key = string.Join("|",
+            domain,
+            entry.Index ?? "",
+            entry.Time ?? "",
+            entry.Level ?? "",
+            entry.Event ?? "",
+            entry.Status ?? "",
+            refValue ?? "",
+            entry.Message ?? "",
+            JsonSerializer.Serialize(entry.RawFields.OrderBy(kv => kv.Key)));
+
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key))[..16].ToArray();
+        bytes[7] = (byte)((bytes[7] & 0x0F) | 0x40);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes).ToString();
+    }
+
     private static Condition DomainCondition(string domain) => new()
     {
         Field = new FieldCondition
         {
             Key   = "domain",
-            Match = new Match { Keyword = domain.ToLowerInvariant() }
+            Match = MatchKeyword(domain.ToLowerInvariant())
         }
     };
+
+    private async Task EnsurePayloadIndexesAsync(string collection)
+    {
+        foreach (var field in new[] { "domain", "level", "status", "event", "ref_value", "ref_field", "error_code" })
+        {
+            try
+            {
+                await _client!.CreatePayloadIndexAsync(collection, field, PayloadSchemaType.Keyword);
+            }
+            catch (RpcException ex) when (ex.StatusCode is StatusCode.AlreadyExists or StatusCode.InvalidArgument)
+            {
+                _logger.LogDebug("Qdrant payload index already exists or cannot be recreated: {Collection}.{Field}", collection, field);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to ensure Qdrant payload index: {Collection}.{Field}", collection, field);
+            }
+        }
+    }
+
+    private static Match MatchKeyword(string value) => new() { Keyword = value };
 
     private async Task<long> CountByLevelAsync(string collection, string level)
     {
@@ -470,7 +521,7 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
                         Field = new FieldCondition
                         {
                             Key   = "level",
-                            Match = new Match { Keyword = level }
+                            Match = MatchKeyword(level)
                         }
                     }
                 }

@@ -46,6 +46,7 @@ public class SplunkTools
         yield return AIFunctionFactory.Create(GetErrors);
         yield return AIFunctionFactory.Create(GetTimeline);
         yield return AIFunctionFactory.Create(GetSampleEntries);
+        yield return AIFunctionFactory.Create(GetTimeOrderedEntries);
 
         // ── Vector search tools ───────────────────────────────────────────────
         yield return AIFunctionFactory.Create(GetDomainSummary);
@@ -150,6 +151,25 @@ Call DiscoverSchema first to see available file names and indices.")]
         return sample.Count == 0 ? $"No entries found for: {fileOrIndex}" : Serialize(sample);
     }
 
+    [Description(@"Return matching log entries in chronological order for ops review.
+Use this whenever the user asks to see logs, errors, warnings, a service/domain, time-wise entries, or evidence for an analysis.
+Supports the same natural query/key=value syntax as RunQuery, for example: 'index=transfers level=ERROR', 'transfers errors', 'status=BLOCKED'.")]
+    private async Task<string> GetTimeOrderedEntries(
+        [Description("Natural query or key=value filters. Examples: 'index=transfers level=ERROR', 'payment gateway timeout', 'fraud errors'")] string query,
+        [Description("Maximum rows to return, default 80")] int maxRows = 80)
+    {
+        var logs = await _logService.SearchBySplQueryAsync(query);
+        if (logs.Count == 0)
+            return $"No time-ordered entries found for: {query}";
+
+        var rows = logs
+            .OrderBy(l => l.Time)
+            .Take(Math.Clamp(maxRows, 1, 200))
+            .ToList();
+
+        return Serialize(rows);
+    }
+
     // ── Vector search tools ───────────────────────────────────────────────────
 
     [Description(@"Get overview of a domain before investigating.
@@ -212,9 +232,15 @@ Falls back to local search if the configured vector store is unavailable.")]
         var dict = ParseFilters(filters);
         if (dict.Count == 0) return "No valid filters provided. Use key=value format e.g. 'level=ERROR'.";
 
+        dict.TryGetValue("index", out var domain);
+        dict.Remove("index");
+        dict.TryGetValue("domain", out var explicitDomain);
+        dict.Remove("domain");
+        domain ??= explicitDomain;
+
         if (_vectorStore.IsAvailable)
         {
-            var vResults = await _vectorStore.SearchByFiltersAsync(dict);
+            var vResults = await _vectorStore.SearchByFiltersAsync(dict, domain);
             if (vResults.Count > 0) return Serialize(vResults);
         }
 

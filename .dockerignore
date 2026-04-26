@@ -1,0 +1,9 @@
+bin/
+obj/
+publish/
+publish-test/
+.git/
+.vs/
+*.zip
+run.log
+run.err.log
