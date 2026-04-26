@@ -1,4 +1,5 @@
 # Splunk Investigator Agent
+> Management/CIO approval brief: see [PROJECT_APPROVAL_README.md](PROJECT_APPROVAL_README.md)
 ### .NET 10 · Blazor Server · Microsoft.Extensions.AI · Azure OpenAI
 
 ---
