@@ -18,7 +18,7 @@ public class SplunkTools
 
     private static readonly HashSet<string> _sensitiveFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        "amount", "user_id", "account_from", "account_to",
+        "user_id", "account_from", "account_to",
         "debtor_account", "creditor_account",
         "debtor_iban", "creditor_iban",
         "debtor_sort_code", "creditor_sort_code",
@@ -281,12 +281,53 @@ Falls back gracefully if the configured vector store is unavailable.")]
     private static Dictionary<string, string> ParseFilters(string filters)
     {
         var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var part in filters.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var part in TokenizeQuery(filters))
         {
             if (!part.Contains('=')) continue;
             var kv = part.Split('=', 2);
-            dict[kv[0].Trim().ToLowerInvariant()] = kv[1].Trim();
+            dict[kv[0].Trim().Trim('"', '\'').ToLowerInvariant()] = kv[1].Trim().Trim('"', '\'');
         }
         return dict;
+    }
+
+    private static IEnumerable<string> TokenizeQuery(string query)
+    {
+        var tokens = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var quote = '\0';
+
+        foreach (var ch in query)
+        {
+            if (quote == '\0' && (ch == '"' || ch == '\''))
+            {
+                quote = ch;
+                current.Append(ch);
+                continue;
+            }
+
+            if (quote != '\0' && ch == quote)
+            {
+                quote = '\0';
+                current.Append(ch);
+                continue;
+            }
+
+            if (quote == '\0' && char.IsWhiteSpace(ch))
+            {
+                if (current.Length > 0)
+                {
+                    tokens.Add(current.ToString());
+                    current.Clear();
+                }
+                continue;
+            }
+
+            current.Append(ch);
+        }
+
+        if (current.Length > 0)
+            tokens.Add(current.ToString());
+
+        return tokens;
     }
 }

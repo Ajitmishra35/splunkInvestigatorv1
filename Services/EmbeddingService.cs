@@ -18,7 +18,7 @@ public class EmbeddingService
 
     private static readonly HashSet<string> _sensitiveFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        "amount", "user_id", "account_from", "account_to",
+        "user_id", "account_from", "account_to",
         "debtor_account", "creditor_account",
         "debtor_iban", "creditor_iban",
         "debtor_sort_code", "creditor_sort_code",

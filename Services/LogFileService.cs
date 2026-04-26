@@ -191,17 +191,24 @@ public class LogFileService
 
         var filters  = new Dictionary<string, string>();
         var freeTerms = new List<string>();
+        var tokens = TokenizeQuery(spl).ToList();
+        var allFields = logs.SelectMany(l => l.RawFields.Keys).Distinct(StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var consumed = AddNaturalFieldFilters(tokens, allFields, filters);
 
-        foreach (var part in spl.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        for (var i = 0; i < tokens.Count; i++)
         {
+            if (consumed.Contains(i)) continue;
+
+            var part = tokens[i];
             if (part.Contains('='))
             {
                 var kv = part.Split('=', 2);
-                filters[kv[0].Trim('"').ToLowerInvariant()] = kv[1].Trim('"').ToLowerInvariant();
+                var key = ResolveFieldName(kv[0].Trim('"', '\''), allFields) ?? kv[0].Trim('"', '\'').ToLowerInvariant();
+                filters[key] = NormalizeQueryValue(kv[1]);
             }
             else if (part.Length > 1)
             {
-                var term = part.Trim('"').ToLowerInvariant();
+                var term = NormalizeQueryValue(part).ToLowerInvariant();
                 if (term is "error" or "errors")
                     filters["level"] = "error";
                 else if (term is "warn" or "warning" or "warnings")
@@ -238,19 +245,27 @@ public class LogFileService
             "show", "all", "log", "logs", "data", "record", "records",
             "entry", "entries", "event", "events", "please", "get", "give",
             "me", "list", "display", "find", "search", "for", "the", "and",
-            "there", "their", "analysis", "analyze", "analyse"
+            "there", "their", "analysis", "analyze", "analyse", "where",
+            "is", "are", "equals", "equal", "eq", "with", "having"
         };
+        var tokens = TokenizeQuery(query).ToList();
+        var allFields = logs.SelectMany(l => l.RawFields.Keys).Distinct(StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var consumed = AddNaturalFieldFilters(tokens, allFields, filters);
 
-        foreach (var part in query.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        for (var i = 0; i < tokens.Count; i++)
         {
+            if (consumed.Contains(i)) continue;
+
+            var part = tokens[i];
             if (part.Contains('='))
             {
                 var kv = part.Split('=', 2);
-                filters[kv[0].Trim('"').ToLowerInvariant()] = kv[1].Trim('"').ToLowerInvariant();
+                var key = ResolveFieldName(kv[0].Trim('"', '\''), allFields) ?? kv[0].Trim('"', '\'').ToLowerInvariant();
+                filters[key] = NormalizeQueryValue(kv[1]);
             }
             else if (part.Length > 1)
             {
-                var term = part.Trim('"').ToLowerInvariant();
+                var term = NormalizeQueryValue(part).ToLowerInvariant();
                 if (term is "error" or "errors")
                     filters["level"] = "error";
                 else if (term is "warn" or "warning" or "warnings")
@@ -474,6 +489,166 @@ public class LogFileService
         var entry = new GenericLogEntry();
         FlattenInto(el, prefix, entry.RawFields);
         return entry;
+    }
+
+    private static IEnumerable<string> TokenizeQuery(string query)
+    {
+        var tokens = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var quote = '\0';
+
+        foreach (var ch in query)
+        {
+            if (quote == '\0' && (ch == '"' || ch == '\''))
+            {
+                quote = ch;
+                current.Append(ch);
+                continue;
+            }
+
+            if (quote != '\0' && ch == quote)
+            {
+                quote = '\0';
+                current.Append(ch);
+                continue;
+            }
+
+            if (quote == '\0' && char.IsWhiteSpace(ch))
+            {
+                if (current.Length > 0)
+                {
+                    tokens.Add(current.ToString());
+                    current.Clear();
+                }
+                continue;
+            }
+
+            current.Append(ch);
+        }
+
+        if (current.Length > 0)
+            tokens.Add(current.ToString());
+
+        return tokens;
+    }
+
+    private static string NormalizeQueryValue(string value)
+        => value.Trim().Trim('"', '\'');
+
+    private static HashSet<int> AddNaturalFieldFilters(
+        IReadOnlyList<string> tokens,
+        HashSet<string> allFields,
+        Dictionary<string, string> filters)
+    {
+        var consumed = new HashSet<int>();
+
+        for (var i = 0; i < tokens.Count; i++)
+        {
+            var field = ResolveFieldName(NormalizeQueryValue(tokens[i]), allFields);
+            if (field is null) continue;
+
+            var valueIndex = -1;
+            if (i + 2 < tokens.Count && IsConnector(tokens[i + 1]))
+                valueIndex = i + 2;
+            else if (i + 1 < tokens.Count && !LooksLikeCommandWord(tokens[i + 1]))
+                valueIndex = i + 1;
+
+            if (valueIndex == -1) continue;
+
+            var value = NormalizeQueryValue(tokens[valueIndex]);
+            if (string.IsNullOrWhiteSpace(value) || IsConnector(value) || LooksLikeCommandWord(value))
+                continue;
+
+            filters[field] = value;
+            consumed.Add(i);
+            if (valueIndex == i + 2) consumed.Add(i + 1);
+            consumed.Add(valueIndex);
+        }
+
+        return consumed;
+    }
+
+    private static string? ResolveFieldName(string rawField, HashSet<string> allFields)
+    {
+        var field = rawField.Trim().Trim('"', '\'').ToLowerInvariant();
+        if (field.Length == 0) return null;
+
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["currencu"] = "currency",
+            ["curreny"] = "currency",
+            ["curr"] = "currency",
+            ["ccy"] = "currency",
+            ["amoutn"] = "amount",
+            ["amt"] = "amount",
+            ["ref"] = "payment_ref",
+            ["traceid"] = "trace.traceid",
+            ["trace_id"] = "trace.traceid",
+            ["pod"] = "kubernetes.pod_name",
+            ["namespace"] = "kubernetes.namespace_name",
+            ["service"] = "kubernetes.labels.app"
+        };
+
+        if (aliases.TryGetValue(field, out var alias) && allFields.Contains(alias))
+            return alias;
+
+        if (allFields.Contains(field))
+            return field;
+
+        var normalized = field.Replace("_", "").Replace(".", "").Replace("-", "");
+        var match = allFields.FirstOrDefault(f =>
+            f.Replace("_", "").Replace(".", "").Replace("-", "").Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+            return match;
+
+        match = allFields.FirstOrDefault(f => LevenshteinDistance(
+            f.Replace("_", "").Replace(".", "").Replace("-", ""),
+            normalized) <= 1);
+
+        return match;
+    }
+
+    private static bool IsConnector(string token)
+    {
+        var t = NormalizeQueryValue(token).ToLowerInvariant();
+        return t is "is" or "are" or "equals" or "equal" or "eq" or ":" or "=";
+    }
+
+    private static bool LooksLikeCommandWord(string token)
+    {
+        var t = NormalizeQueryValue(token).ToLowerInvariant();
+        return t is "show" or "all" or "log" or "logs" or "data" or "where"
+            or "find" or "search" or "list" or "display" or "for" or "the"
+            or "and" or "with" or "having" or "please" or "give" or "me";
+    }
+
+    private static int LevenshteinDistance(string left, string right)
+    {
+        if (left.Length == 0) return right.Length;
+        if (right.Length == 0) return left.Length;
+
+        var previous = new int[right.Length + 1];
+        var current = new int[right.Length + 1];
+
+        for (var j = 0; j <= right.Length; j++)
+            previous[j] = j;
+
+        for (var i = 1; i <= left.Length; i++)
+        {
+            current[0] = i;
+
+            for (var j = 1; j <= right.Length; j++)
+            {
+                var cost = char.ToLowerInvariant(left[i - 1]) == char.ToLowerInvariant(right[j - 1]) ? 0 : 1;
+                current[j] = Math.Min(
+                    Math.Min(current[j - 1] + 1, previous[j] + 1),
+                    previous[j - 1] + cost);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[right.Length];
     }
 
     private static void FlattenInto(JsonElement el, string prefix, Dictionary<string, string> dict)

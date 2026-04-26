@@ -52,20 +52,32 @@ public class GenericLogEntry
         return false;
     }
 
-    /// <summary>Filter by key=value (case-insensitive on both key and value).</summary>
+    /// <summary>Filter by key=value (case-insensitive, with numeric and boolean normalization).</summary>
     public bool Matches(string key, string value)
     {
         var v = Get(key);
         if (v is null) return false;
 
-        if (decimal.TryParse(v, out var actualNumber) &&
-            decimal.TryParse(value, out var expectedNumber))
+        var actual = NormalizeFilterValue(v);
+        var expected = NormalizeFilterValue(value);
+
+        if (decimal.TryParse(actual, out var actualNumber) &&
+            decimal.TryParse(expected, out var expectedNumber))
         {
             return actualNumber == expectedNumber;
         }
 
-        return v.Equals(value, StringComparison.OrdinalIgnoreCase);
+        if (bool.TryParse(actual, out var actualBool) &&
+            bool.TryParse(expected, out var expectedBool))
+        {
+            return actualBool == expectedBool;
+        }
+
+        return actual.Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string NormalizeFilterValue(string value)
+        => value.Trim().Trim('"', '\'');
 
     /// <summary>Serialize only non-null fields for sending to AI (clean output).</summary>
     public Dictionary<string, string> ToCleanDict(IEnumerable<string>? excludeKeys = null)

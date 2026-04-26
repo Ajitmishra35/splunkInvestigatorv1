@@ -40,7 +40,8 @@ public class AgentService
 
         ## Report rules
         - Neutral tone, factual only.
-        - Do not expose sensitive data: amounts, account numbers, IBANs, card numbers, user IDs.
+        - Do not expose sensitive data: account numbers, IBANs, card numbers, user IDs, credentials, or raw personal identifiers.
+        - Amounts are operational fields and may be used in search results and analysis when present in the loaded logs.
         - Include a concise time-wise sequence when timestamps exist.
         - For root cause requests, separate Observed issue, Evidence, Likely root cause, and Next checks.
         - End with Splunk URL reference.
