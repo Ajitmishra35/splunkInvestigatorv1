@@ -209,13 +209,23 @@ public sealed class QdrantVectorStoreService : IVectorStoreService
             if (domain is not null)
                 filter.Must.Add(DomainCondition(domain));
 
-            var result = await _client.ScrollAsync(
-                CollectionName(domain ?? _prefix),
-                filter,
-                limit: 200,
-                payloadSelector: true);
+            var collections = domain is not null
+                ? [CollectionName(domain)]
+                : await GetCollectionNamesAsync();
 
-            return result.Result.Select(PayloadToEntry).ToList();
+            var results = new List<GenericLogEntry>();
+            foreach (var col in collections)
+            {
+                var scroll = await _client.ScrollAsync(
+                    col,
+                    filter,
+                    limit: 200,
+                    payloadSelector: true);
+
+                results.AddRange(scroll.Result.Select(PayloadToEntry));
+            }
+
+            return results;
         }
         catch (Exception ex)
         {

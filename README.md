@@ -59,7 +59,27 @@
 }
 ```
 
-### 2. Add Your Splunk Exports
+### 2. Choose Vector Store Provider
+```json
+{
+  "VectorStore": {
+    "Provider": "InMemory"
+  }
+}
+```
+
+Supported providers:
+
+| Provider | Use Case |
+|---|---|
+| `InMemory` | Demo, local testing, single-container pilot |
+| `Qdrant` | Qdrant Cloud vector storage |
+| `AzureAISearch` | Enterprise Azure AI Search vector index |
+
+If `Qdrant` or `AzureAISearch` is selected but unavailable, the app falls back to
+`InMemory` so investigation can continue.
+
+### 3. Add Your Splunk Exports
 Drop any exported Splunk JSON files into the `SampleLogs/` folder.
 
 **Export format** (standard Splunk JSON export):
@@ -79,7 +99,7 @@ Drop any exported Splunk JSON files into the `SampleLogs/` folder.
 
 > You can export directly from Splunk: **Search → Export → JSON**
 
-### 3. Run
+### 4. Run
 ```bash
 dotnet run --project SplunkInvestigator.csproj
 ```

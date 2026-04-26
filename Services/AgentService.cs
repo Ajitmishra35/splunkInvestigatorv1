@@ -42,9 +42,9 @@ public class AgentService
         - End with Splunk URL reference
         - Sections: Overview → Timeline → Issues → Splunk URL
 
-        ## If Qdrant unavailable:
+        ## If vector store unavailable:
         Fall back to existing in-memory search tools (SearchByRef, RunQuery, GetErrors).
-        Tell user: 'Using local search — Qdrant unavailable'
+        Tell user: 'Using local search - vector store unavailable'
         """;
 
     public AgentService(

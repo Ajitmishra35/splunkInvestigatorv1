@@ -461,7 +461,7 @@
         var m when m.Contains("entries found")                                => 15,
         "Initializing collection..."                                          => 20,
         var m when m.StartsWith("Embedding batch")                            => ParseEmbeddingPct(m),
-        "Storing in Qdrant..."                                                => 85,
+        "Storing in vector search..."                                         => 85,
         var m when m.StartsWith("Done")                                       => 100,
         var m when m.Contains("failed") || m.Contains("cancelled")           => 100,
         _                                                                     => 0

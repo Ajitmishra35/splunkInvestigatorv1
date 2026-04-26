@@ -155,12 +155,12 @@ Call DiscoverSchema first to see available file names and indices.")]
     [Description(@"Get overview of a domain before investigating.
 Shows total entries, error count, warning count, time range covered, top events.
 Always call this first when starting a new domain investigation.
-If Qdrant is unavailable, use GetStatistics instead.")]
+If the configured vector store is unavailable, use GetStatistics instead.")]
     private async Task<string> GetDomainSummary(
         [Description("Domain name e.g. payments, transfers, loans, cards, fraud")] string domain)
     {
         if (!_vectorStore.IsAvailable)
-            return "Qdrant unavailable — use GetStatistics for overview.";
+            return "Vector store unavailable - use GetStatistics for overview.";
 
         var s = await _vectorStore.GetDomainStatsAsync(domain);
         return $"""
@@ -176,14 +176,14 @@ If Qdrant is unavailable, use GetStatistics instead.")]
     [Description(@"Search using natural language — finds semantically similar log entries.
 Use for: suspicious patterns, similar failures, vague queries like 'gateway timeouts' or 'fraud related events'.
 Call DiscoverSchema first to confirm domain name.
-Falls back gracefully if Qdrant is unavailable.")]
+Falls back gracefully if the configured vector store is unavailable.")]
     private async Task<string> SearchSemantic(
         [Description("Natural language query e.g. 'payment gateway timeout errors' or 'suspicious fraud patterns'")] string query,
         [Description("Domain to search (e.g. payments, transfers). Leave empty to search all.")] string? domain = null,
         [Description("Maximum number of results to return")] int topK = 10)
     {
         if (!_vectorStore.IsAvailable)
-            return "Using local search — Qdrant unavailable. Try RunQuery instead.";
+            return "Using local search - vector store unavailable. Try RunQuery instead.";
 
         var vector  = await _embeddingService.EmbedQueryAsync(query);
         var results = await _vectorStore.SearchSemanticAsync(vector, domain, topK);
@@ -193,7 +193,7 @@ Falls back gracefully if Qdrant is unavailable.")]
     [Description(@"Search by exact field values — fast structured search.
 Use for: ref numbers (TXN-*, TRF-*, LOAN-*), level=ERROR, status=BLOCKED.
 Faster than semantic for structured queries.
-Falls back to in-memory search if Qdrant is unavailable.")]
+Falls back to local search if the configured vector store is unavailable.")]
     private async Task<string> SearchExact(
         [Description("Filter string e.g. 'level=ERROR status=BLOCKED' or a ref number like 'TXN-001'")] string filters)
     {
@@ -225,7 +225,7 @@ Falls back to in-memory search if Qdrant is unavailable.")]
 
     [Description(@"Most powerful search — combines natural language with exact filters.
 Use for: 'SWIFT failures where status is BLOCKED' or 'fraud events in transfers domain'.
-Falls back gracefully if Qdrant is unavailable.")]
+Falls back gracefully if the configured vector store is unavailable.")]
     private async Task<string> SearchHybrid(
         [Description("Natural language query e.g. 'SWIFT payment failures'")] string naturalQuery,
         [Description("Optional exact filters e.g. 'level=ERROR' or 'status=BLOCKED'")] string? filters = null,
@@ -233,7 +233,7 @@ Falls back gracefully if Qdrant is unavailable.")]
         [Description("Maximum number of results to return")] int topK = 10)
     {
         if (!_vectorStore.IsAvailable)
-            return "Using local search — Qdrant unavailable. Try RunQuery instead.";
+            return "Using local search - vector store unavailable. Try RunQuery instead.";
 
         var vector      = await _embeddingService.EmbedQueryAsync(naturalQuery);
         var filtersDict = filters is not null ? ParseFilters(filters) : new Dictionary<string, string>();

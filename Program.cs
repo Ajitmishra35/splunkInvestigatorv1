@@ -37,7 +37,35 @@ builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =
 
 // ── App Services ───────────────────────────────────────────────────────────
 builder.Services.AddSingleton<EmbeddingService>();
-builder.Services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();
+builder.Services.AddSingleton<InMemoryVectorStoreService>();
+builder.Services.AddSingleton<QdrantVectorStoreService>();
+builder.Services.AddSingleton<AzureAISearchVectorStoreService>();
+builder.Services.AddSingleton<IVectorStoreService>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("VectorStoreSelection");
+    var fallback = sp.GetRequiredService<InMemoryVectorStoreService>();
+    var provider = config["VectorStore:Provider"] ?? "InMemory";
+
+    IVectorStoreService selected = provider.Trim().ToLowerInvariant() switch
+    {
+        "qdrant" => sp.GetRequiredService<QdrantVectorStoreService>(),
+        "azureaisearch" or "azure-ai-search" or "azuresearch" => sp.GetRequiredService<AzureAISearchVectorStoreService>(),
+        "inmemory" or "in-memory" or "memory" => fallback,
+        _ => fallback
+    };
+
+    if (!ReferenceEquals(selected, fallback) && !selected.IsAvailable)
+    {
+        logger.LogWarning(
+            "Configured vector store '{Provider}' is unavailable. Falling back to in-memory vector search.",
+            provider);
+        return fallback;
+    }
+
+    logger.LogInformation("Using vector store provider: {Provider}", selected.GetType().Name);
+    return selected;
+});
 builder.Services.AddSingleton<LogFileService>();
 builder.Services.AddSingleton<SplunkTools>();
 builder.Services.AddScoped<AgentService>();
@@ -61,5 +89,7 @@ app.MapRazorComponents<SplunkInvestigator.Components.App>()
 // ── Qdrant health check (fire-and-forget — never blocks startup) ────────────
 _ = Task.Run(() =>
     app.Services.GetRequiredService<IVectorStoreService>().IsAvailable);
+_ = Task.Run(async () =>
+    await app.Services.GetRequiredService<LogFileService>().InitializeSampleLogsAsync());
 
 app.Run();

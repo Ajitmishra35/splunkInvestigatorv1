@@ -1,49 +1,105 @@
-# Swapping Qdrant for Azure AI Search
+# Vector Store Provider Configuration
 
-The vector store is behind `IVectorStoreService`. Replacing Qdrant with Azure AI Search
-requires changes in exactly **3 places** — no business logic changes needed.
+The app now supports three vector-store modes behind the same `IVectorStoreService`
+interface:
 
-## Step 1 — Create the new implementation
+- `InMemory` - stores embeddings in app memory. Best for demos, local testing, and
+  single-container pilots.
+- `Qdrant` - stores embeddings in Qdrant Cloud.
+- `AzureAISearch` - stores embeddings in Azure AI Search indexes.
 
-Create `Services/AzureAISearchVectorStoreService.cs` implementing `IVectorStoreService`:
+If `Qdrant` or `AzureAISearch` is selected but unavailable at startup, the app falls
+back to `InMemory` so existing upload and investigation flows still work.
 
-```csharp
-public sealed class AzureAISearchVectorStoreService : IVectorStoreService
-{
-    // Implement all 8 interface members using Azure.Search.Documents SDK
-    // Collection name pattern: index name = "{prefix}-{domain}"
-    // Vector field: float[256], cosine similarity
-}
-```
-
-Azure AI Search NuGet:
-```xml
-<PackageReference Include="Azure.Search.Documents" Version="11.*" />
-```
-
-## Step 2 — Swap the registration in Program.cs
-
-```csharp
-// Remove:
-builder.Services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();
-
-// Add:
-builder.Services.AddSingleton<IVectorStoreService, AzureAISearchVectorStoreService>();
-```
-
-## Step 3 — Add Azure AI Search config to appsettings.json
+## appsettings.json
 
 ```json
-"AzureAISearch": {
-  "Endpoint": "https://<your-search>.search.windows.net",
-  "ApiKey": "<your-admin-key>",
-  "IndexPrefix": "splunk"
+{
+  "VectorStore": {
+    "Provider": "InMemory"
+  },
+  "Qdrant": {
+    "Endpoint": "https://YOUR-QDRANT-CLUSTER.qdrant.io",
+    "ApiKey": "YOUR-QDRANT-KEY",
+    "CollectionPrefix": "splunk"
+  },
+  "AzureAISearch": {
+    "Endpoint": "https://YOUR-SEARCH-SERVICE.search.windows.net",
+    "ApiKey": "YOUR-AZURE-AI-SEARCH-KEY",
+    "IndexPrefix": "splunk"
+  }
 }
 ```
 
-Remove (or keep for reference) the `Qdrant` section.
+Allowed `VectorStore:Provider` values:
 
----
+```text
+InMemory
+Qdrant
+AzureAISearch
+```
 
-No other code changes needed. `EmbeddingService`, `SplunkTools`, `LogFileService`,
-`AgentService`, and `Investigator.razor` are all unaffected.
+Environment variable examples:
+
+```powershell
+$env:VectorStore__Provider = "AzureAISearch"
+$env:AzureAISearch__Endpoint = "https://my-search.search.windows.net"
+$env:AzureAISearch__ApiKey = "<admin-or-query-key-with-write-access>"
+$env:AzureAISearch__IndexPrefix = "splunk"
+```
+
+## Storage Names
+
+Qdrant collection pattern:
+
+```text
+{CollectionPrefix}-{domain}
+```
+
+Azure AI Search index pattern:
+
+```text
+{IndexPrefix}-{domain}
+```
+
+Examples:
+
+```text
+splunk-payments
+splunk-transfers
+splunk-fraud
+```
+
+## Azure AI Search Implementation
+
+`Services/AzureAISearchVectorStoreService.cs` implements all members of
+`IVectorStoreService` using the `Azure.Search.Documents` SDK.
+
+Index details:
+
+- Key field: `id`
+- Vector field: `vector`
+- Vector dimensions: `256`
+- Similarity metric: cosine
+- Algorithm: HNSW
+- Metadata fields: `domain`, `time`, `level`, `event`, `status`, `error_code`,
+  `ref_value`, `ref_field`, `host`, `pod`, `namespace`, `message`, `full_json`
+
+Sensitive fields are excluded from `full_json` before being persisted to external
+vector stores.
+
+## In-Memory Mode
+
+In-memory mode still supports real vector search:
+
+1. Logs are parsed.
+2. Azure OpenAI embeddings are generated.
+3. Vectors and log entries are stored in RAM.
+4. Semantic and hybrid search use cosine similarity.
+
+Limitations:
+
+- Data is lost when the app restarts.
+- Data is not shared across multiple container instances.
+- Large production datasets should use Qdrant or Azure AI Search.
+

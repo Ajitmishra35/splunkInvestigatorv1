@@ -16,6 +16,7 @@ public class LogFileService
     private readonly EmbeddingService _embeddingService;
 
     private List<GenericLogEntry>? _diskLogs;
+    private readonly HashSet<string> _indexedDiskFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<GenericLogEntry>> _uploadedLogs = new();
     private readonly List<UploadedLogFile> _uploadHistory = new();
     private readonly Dictionary<string, DomainSchema> _schemas = new();
@@ -59,10 +60,13 @@ public class LogFileService
         return merged;
     }
 
+    public Task InitializeSampleLogsAsync()
+        => GetDiskLogsAsync();
+
     /// <summary>
     /// Upload a JSON file from the browser.
     /// Parses into GenericLogEntry — works for ANY domain.
-    /// Discovers schema automatically, then indexes into Qdrant if available.
+    /// Discovers schema automatically, then indexes into the configured vector store if available.
     /// </summary>
     public async Task<UploadedLogFile> AddUploadedLogsAsync(
         string fileName,
@@ -126,13 +130,13 @@ public class LogFileService
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Stage 4: Upsert
-                progress?.Report("Storing in Qdrant...");
+                progress?.Report("Storing in vector search...");
                 await _vectorStore.UpsertBatchAsync(domain, entries, vectors);
 
                 progress?.Report($"Done — {entries.Count} entries indexed and searchable");
                 if (_logger.IsEnabled(LogLevel.Information))
                     _logger.LogInformation(
-                        "Indexed {Count} entries into Qdrant domain '{Domain}'",
+                        "Indexed {Count} entries into vector store domain '{Domain}'",
                         entries.Count, domain);
             }
             catch (OperationCanceledException)
@@ -143,7 +147,7 @@ public class LogFileService
             catch (Exception ex)
             {
                 // Never fail the upload — in-memory search still works
-                progress?.Report("Qdrant indexing failed — using local search.");
+                progress?.Report("Vector indexing failed - using local search.");
                 _logger.LogError(ex, "Vector store indexing failed for {File}", fileName);
             }
         }
@@ -366,6 +370,7 @@ public class LogFileService
 
                 var fileName = Path.GetFileName(file);
                 _schemas[fileName] = BuildSchema(fileName, entries);
+                await IndexEntriesAsync(fileName, entries);
             }
             catch (Exception ex)
             {
@@ -375,6 +380,31 @@ public class LogFileService
 
         _diskLogs = result;
         return result;
+    }
+
+    private async Task IndexEntriesAsync(string fileName, List<GenericLogEntry> entries)
+    {
+        if (!_vectorStore.IsAvailable || entries.Count == 0 || !_indexedDiskFiles.Add(fileName))
+            return;
+
+        try
+        {
+            var domain = entries.FirstOrDefault(e => e.Index is not null)?.Index
+                         ?? Path.GetFileNameWithoutExtension(fileName);
+
+            await _vectorStore.InitializeCollectionAsync(domain);
+            var vectors = await _embeddingService.EmbedBatchAsync(entries);
+            await _vectorStore.UpsertBatchAsync(domain, entries, vectors);
+
+            _logger.LogInformation(
+                "Indexed {Count} sample log entries into vector store domain '{Domain}'",
+                entries.Count,
+                domain);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Sample log vector indexing failed for {File}", fileName);
+        }
     }
 
     /// <summary>
