@@ -1,123 +1,277 @@
 [
   {
-    "_time": "2026-04-25T08:01:12.123Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
+    "@timestamp": "2026-04-26T06:20:14.922135Z",
+    "_time": "2026-04-26T06:20:14.922Z",
+    "severity": "info",
     "level": "INFO",
-    "transaction_ref": "TXN-98765",
-    "event": "PAYMENT_INITIATED",
+    "stream": "stdout",
+    "index": "payments",
+    "sourcetype": "_json",
+    "source": "http:AKS events",
+    "cluster_name": "aks-banking-platform-test-cus",
+    "host": "fluentd-log-forwarder-f7n6x",
+    "message": "Request finished \"HTTP/1.1\" \"POST\" \"http\" \"payment-orchestration-service.banking-platform.svc.cluster.local:8080\" \"/banking/v1/payments?tenantId=demo-tenant-001\" - 202 128 \"application/json; charset=utf-8\" 184.2301ms",
+    "messageTemplate": "Request finished {Protocol} {Method} {Scheme}://{Host}{PathBase}{Path}{QueryString} - {StatusCode} {ContentLength} {ContentType} {ElapsedMilliseconds}ms",
+    "payment_ref": "PAY-20260426-001",
+    "event": "PAYMENT_ACCEPTED",
     "amount": 250.00,
     "currency": "USD",
-    "status": "PENDING",
-    "user_id": "USR-4421",
-    "message": "Payment initiated for transaction TXN-98765"
+    "status": "ACCEPTED",
+    "docker": {
+      "container_id": "demo-container-pay-001"
+    },
+    "kubernetes": {
+      "container_name": "microservice-deployment",
+      "container_image": "registry.example.com/platform/banking/payment-orchestration-service:20260426T062014Z-demo",
+      "container_image_id": "registry.example.com/platform/banking/payment-orchestration-service@sha256:demo-pay-001",
+      "namespace_name": "banking-platform",
+      "namespace_id": "demo-namespace-payments",
+      "pod_name": "payment-orchestration-service-7b8d6c9d4f-m6kq2",
+      "pod_id": "demo-pod-pay-001",
+      "pod_ip": "100.100.4.172",
+      "host": "aks-nodepool01-vmss00002d",
+      "master_url": "https://100.99.0.1:443/api",
+      "labels": {
+        "app": "payment-orchestration-service",
+        "release/version": "stable",
+        "platform/token": "standard",
+        "pod-template-hash": "7b8d6c9d4f",
+        "security.istio.io/tlsMode": "istio",
+        "service.istio.io/canonical-name": "payment-orchestration-service",
+        "service.istio.io/canonical-revision": "latest"
+      },
+      "namespace_labels": {
+        "istio-injection": "enabled",
+        "kubernetes.io/metadata.name": "banking-platform",
+        "monitoring.platform.io/instance": "aks-centralus-test-monitoring"
+      }
+    },
+    "http": {
+      "protocol": "HTTP/1.1",
+      "method": "POST",
+      "scheme": "http",
+      "host": "payment-orchestration-service.banking-platform.svc.cluster.local:8080",
+      "path": "/banking/v1/payments",
+      "queryString": "?tenantId=demo-tenant-001",
+      "statusCode": 202,
+      "contentType": "application/json; charset=utf-8",
+      "contentLength": 128,
+      "elapsedMilliseconds": 184.2301,
+      "url": "http://payment-orchestration-service.banking-platform.svc.cluster.local:8080/banking/v1/payments?tenantId=demo-tenant-001"
+    },
+    "trace": {
+      "traceId": "demo-trace-pay-001",
+      "spanId": "demo-span-pay-001",
+      "parentId": "demo-parent-pay-001",
+      "reference_id": "00-demo-trace-pay-001-demo-span-pay-001-01"
+    },
+    "network": {
+      "src_ip": "::ffff:127.0.0.6",
+      "dest_ip": "100.100.4.172"
+    },
+    "context": {
+      "app": "Banking Platform - Payment Services",
+      "tenant": "demo-tenant-guid-001",
+      "UAID": "UAID-DEMO-PAY-001",
+      "RequestId": "REQ-PAY-000001",
+      "ConnectionId": "CONN-PAY-000001",
+      "SourceContext": "Microsoft.AspNetCore.Hosting.Diagnostics",
+      "applog": true
+    }
   },
   {
-    "_time": "2026-04-25T08:01:13.456Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
+    "@timestamp": "2026-04-26T06:20:15.401000Z",
+    "_time": "2026-04-26T06:20:15.401Z",
+    "severity": "info",
     "level": "INFO",
-    "transaction_ref": "TXN-98765",
-    "event": "GATEWAY_REQUEST",
-    "gateway": "STRIPE",
+    "stream": "stdout",
+    "index": "payments",
+    "sourcetype": "_json",
+    "source": "http:AKS events",
+    "cluster_name": "aks-banking-platform-test-cus",
+    "host": "fluentd-log-forwarder-f7n6x",
+    "message": "Gateway authorization request sent for PAY-20260426-001 to sandbox-card-gateway",
+    "payment_ref": "PAY-20260426-001",
+    "event": "GATEWAY_AUTHORIZATION_SENT",
+    "gateway": "sandbox-card-gateway",
     "status": "PROCESSING",
-    "message": "Gateway request sent for TXN-98765"
+    "kubernetes": {
+      "container_name": "microservice-deployment",
+      "namespace_name": "banking-platform",
+      "pod_name": "payment-orchestration-service-7b8d6c9d4f-m6kq2",
+      "labels": {
+        "app": "payment-orchestration-service"
+      }
+    },
+    "trace": {
+      "traceId": "demo-trace-pay-001",
+      "spanId": "demo-span-pay-002",
+      "parentId": "demo-span-pay-001",
+      "reference_id": "00-demo-trace-pay-001-demo-span-pay-002-01"
+    },
+    "context": {
+      "app": "Banking Platform - Payment Services",
+      "tenant": "demo-tenant-guid-001",
+      "RequestId": "REQ-PAY-000001",
+      "SourceContext": "PaymentGatewayClient",
+      "applog": true
+    }
   },
   {
-    "_time": "2026-04-25T08:01:15.789Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
+    "@timestamp": "2026-04-26T06:20:17.202000Z",
+    "_time": "2026-04-26T06:20:17.202Z",
+    "severity": "error",
     "level": "ERROR",
-    "transaction_ref": "TXN-98765",
-    "event": "GATEWAY_ERROR",
-    "error_code": "TIMEOUT",
-    "gateway": "STRIPE",
+    "stream": "stdout",
+    "index": "payments",
+    "sourcetype": "_json",
+    "source": "http:AKS events",
+    "cluster_name": "aks-banking-platform-test-cus",
+    "host": "fluentd-log-forwarder-f7n6x",
+    "message": "Gateway timeout for PAY-20260426-001 after 2000ms",
+    "payment_ref": "PAY-20260426-001",
+    "event": "GATEWAY_TIMEOUT",
+    "gateway": "sandbox-card-gateway",
+    "error_code": "GATEWAY_TIMEOUT",
     "status": "FAILED",
-    "message": "Gateway timeout for TXN-98765 after 2000ms"
+    "retry_eligible": true,
+    "kubernetes": {
+      "container_name": "microservice-deployment",
+      "namespace_name": "banking-platform",
+      "pod_name": "payment-orchestration-service-7b8d6c9d4f-m6kq2",
+      "labels": {
+        "app": "payment-orchestration-service"
+      }
+    },
+    "trace": {
+      "traceId": "demo-trace-pay-001",
+      "spanId": "demo-span-pay-003",
+      "parentId": "demo-span-pay-002",
+      "reference_id": "00-demo-trace-pay-001-demo-span-pay-003-01"
+    },
+    "context": {
+      "app": "Banking Platform - Payment Services",
+      "tenant": "demo-tenant-guid-001",
+      "RequestId": "REQ-PAY-000001",
+      "SourceContext": "PaymentGatewayClient",
+      "applog": true
+    }
   },
   {
-    "_time": "2026-04-25T08:01:16.001Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
+    "@timestamp": "2026-04-26T06:20:18.150000Z",
+    "_time": "2026-04-26T06:20:18.150Z",
+    "severity": "info",
     "level": "INFO",
-    "transaction_ref": "TXN-98765",
+    "stream": "stdout",
+    "index": "payments",
+    "sourcetype": "_json",
+    "source": "http:AKS events",
+    "cluster_name": "aks-banking-platform-test-cus",
+    "host": "fluentd-log-forwarder-f7n6x",
+    "message": "Retry attempt 2 accepted for PAY-20260426-001",
+    "payment_ref": "PAY-20260426-001",
     "event": "RETRY_INITIATED",
     "attempt": 2,
     "status": "RETRYING",
-    "message": "Retry attempt 2 for TXN-98765"
+    "kubernetes": {
+      "container_name": "microservice-deployment",
+      "namespace_name": "banking-platform",
+      "pod_name": "payment-orchestration-service-7b8d6c9d4f-m6kq2",
+      "labels": {
+        "app": "payment-orchestration-service"
+      }
+    },
+    "trace": {
+      "traceId": "demo-trace-pay-001",
+      "spanId": "demo-span-pay-004",
+      "parentId": "demo-span-pay-003",
+      "reference_id": "00-demo-trace-pay-001-demo-span-pay-004-01"
+    },
+    "context": {
+      "app": "Banking Platform - Payment Services",
+      "tenant": "demo-tenant-guid-001",
+      "RequestId": "REQ-PAY-000001",
+      "SourceContext": "PaymentRetryWorker",
+      "applog": true
+    }
   },
   {
-    "_time": "2026-04-25T08:01:18.222Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
+    "@timestamp": "2026-04-26T06:20:20.312000Z",
+    "_time": "2026-04-26T06:20:20.312Z",
+    "severity": "info",
     "level": "INFO",
-    "transaction_ref": "TXN-98765",
-    "event": "PAYMENT_SUCCESS",
-    "gateway": "STRIPE",
+    "stream": "stdout",
+    "index": "payments",
+    "sourcetype": "_json",
+    "source": "http:AKS events",
+    "cluster_name": "aks-banking-platform-test-cus",
+    "host": "fluentd-log-forwarder-f7n6x",
+    "message": "Payment PAY-20260426-001 completed successfully on retry",
+    "payment_ref": "PAY-20260426-001",
+    "event": "PAYMENT_COMPLETED",
+    "gateway": "sandbox-card-gateway",
     "status": "COMPLETED",
-    "message": "Payment completed successfully for TXN-98765"
+    "duration_ms": 5390,
+    "kubernetes": {
+      "container_name": "microservice-deployment",
+      "namespace_name": "banking-platform",
+      "pod_name": "payment-orchestration-service-7b8d6c9d4f-m6kq2",
+      "labels": {
+        "app": "payment-orchestration-service"
+      }
+    },
+    "trace": {
+      "traceId": "demo-trace-pay-001",
+      "spanId": "demo-span-pay-005",
+      "parentId": "demo-span-pay-004",
+      "reference_id": "00-demo-trace-pay-001-demo-span-pay-005-01"
+    },
+    "context": {
+      "app": "Banking Platform - Payment Services",
+      "tenant": "demo-tenant-guid-001",
+      "RequestId": "REQ-PAY-000001",
+      "SourceContext": "PaymentCompletionHandler",
+      "applog": true
+    }
   },
   {
-    "_time": "2026-04-25T09:15:00.000Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-02",
-    "level": "ERROR",
-    "transaction_ref": "TXN-11223",
-    "event": "FRAUD_DETECTION",
-    "error_code": "FRAUD_SUSPECTED",
-    "status": "BLOCKED",
-    "user_id": "USR-9901",
-    "message": "Transaction TXN-11223 blocked by fraud detection"
-  },
-  {
-    "_time": "2026-04-25T09:15:01.100Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-02",
+    "@timestamp": "2026-04-26T07:15:00.000000Z",
+    "_time": "2026-04-26T07:15:00.000Z",
+    "severity": "warning",
     "level": "WARN",
-    "transaction_ref": "TXN-11223",
-    "event": "ALERT_RAISED",
-    "status": "BLOCKED",
-    "message": "Fraud alert raised for TXN-11223, notified risk team"
-  },
-  {
-    "_time": "2026-04-25T10:30:00.000Z",
+    "stream": "stdout",
     "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
-    "level": "INFO",
-    "transaction_ref": "TXN-55441",
-    "event": "PAYMENT_INITIATED",
+    "sourcetype": "_json",
+    "source": "http:AKS events",
+    "cluster_name": "aks-banking-platform-test-cus",
+    "host": "fluentd-log-forwarder-f7n6x",
+    "message": "Fraud rules blocked PAY-20260426-002; risk alert opened for demo-risk-queue",
+    "payment_ref": "PAY-20260426-002",
+    "event": "FRAUD_ALERT_RAISED",
     "amount": 1200.00,
     "currency": "GBP",
-    "status": "PENDING",
-    "user_id": "USR-7722",
-    "message": "Payment initiated for transaction TXN-55441"
-  },
-  {
-    "_time": "2026-04-25T10:30:05.000Z",
-    "index": "payments",
-    "source": "payment-service",
-    "sourcetype": "java_app",
-    "host": "pay-svc-01",
-    "level": "INFO",
-    "transaction_ref": "TXN-55441",
-    "event": "PAYMENT_SUCCESS",
-    "status": "COMPLETED",
-    "message": "Payment TXN-55441 completed successfully"
+    "error_code": "FRAUD_SUSPECTED",
+    "status": "BLOCKED",
+    "kubernetes": {
+      "container_name": "microservice-deployment",
+      "namespace_name": "banking-platform",
+      "pod_name": "payment-risk-service-5f6d7c8b9c-j2p4k",
+      "labels": {
+        "app": "payment-risk-service"
+      }
+    },
+    "trace": {
+      "traceId": "demo-trace-pay-002",
+      "spanId": "demo-span-pay-006",
+      "parentId": "demo-parent-pay-002",
+      "reference_id": "00-demo-trace-pay-002-demo-span-pay-006-01"
+    },
+    "context": {
+      "app": "Banking Platform - Payment Risk Services",
+      "tenant": "demo-tenant-guid-002",
+      "RequestId": "REQ-PAY-000002",
+      "SourceContext": "FraudRulesEngine",
+      "applog": true
+    }
   }
 ]
