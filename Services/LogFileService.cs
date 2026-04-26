@@ -12,6 +12,8 @@ public class LogFileService
 {
     private readonly string _logsFolder;
     private readonly ILogger<LogFileService> _logger;
+    private readonly IVectorStoreService _vectorStore;
+    private readonly EmbeddingService _embeddingService;
 
     private List<GenericLogEntry>? _diskLogs;
     private readonly Dictionary<string, List<GenericLogEntry>> _uploadedLogs = new();
@@ -25,9 +27,16 @@ public class LogFileService
         ReadCommentHandling = JsonCommentHandling.Skip
     };
 
-    public LogFileService(IConfiguration config, ILogger<LogFileService> logger)
+    public LogFileService(
+        IConfiguration config,
+        ILogger<LogFileService> logger,
+        IVectorStoreService vectorStore,
+        EmbeddingService embeddingService)
     {
-        _logger = logger;
+        _logger           = logger;
+        _vectorStore      = vectorStore;
+        _embeddingService = embeddingService;
+
         var folder = config["SplunkSettings:LogsFolder"] ?? "SampleLogs";
         _logsFolder = Path.IsPathRooted(folder)
             ? folder
@@ -53,33 +62,90 @@ public class LogFileService
     /// <summary>
     /// Upload a JSON file from the browser.
     /// Parses into GenericLogEntry — works for ANY domain.
-    /// Discovers schema automatically.
+    /// Discovers schema automatically, then indexes into Qdrant if available.
     /// </summary>
-    public async Task<UploadedLogFile> AddUploadedLogsAsync(string fileName, Stream stream)
+    public async Task<UploadedLogFile> AddUploadedLogsAsync(
+        string fileName,
+        Stream stream,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         var record = new UploadedLogFile { FileName = fileName };
+        List<GenericLogEntry> entries = [];
+
         try
         {
-            using var reader = new StreamReader(stream);
-            var content = await reader.ReadToEndAsync();
+            // ── Stage 1: Parse ────────────────────────────────────────────────
+            progress?.Report($"Parsing file...");
 
-            var entries = ParseGeneric(content);
+            using var reader = new StreamReader(stream);
+            var content = await reader.ReadToEndAsync(cancellationToken);
+
+            entries = ParseGeneric(content);
 
             if (entries.Count == 0)
                 throw new InvalidDataException("File parsed but contained 0 log entries.");
 
             _uploadedLogs[fileName] = entries;
             record.EntryCount = entries.Count;
-
-            // Build and store schema for this file
             _schemas[fileName] = BuildSchema(fileName, entries);
 
+            progress?.Report($"Parsing file... {entries.Count} entries found");
             _logger.LogInformation("Uploaded {Count} entries from {File}", entries.Count, fileName);
         }
         catch (Exception ex)
         {
             record.ErrorMessage = ex.Message;
             _logger.LogError(ex, "Failed to parse uploaded file: {File}", fileName);
+            _uploadHistory.Insert(0, record);
+            return record;
+        }
+
+        // ── Stages 2-4: Vector store indexing (best-effort) ──────────────────
+        if (_vectorStore.IsAvailable)
+        {
+            try
+            {
+                var domain = entries.FirstOrDefault(e => e.Index is not null)?.Index
+                             ?? Path.GetFileNameWithoutExtension(fileName);
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Stage 2: Init collection
+                progress?.Report("Initializing collection...");
+                await _vectorStore.InitializeCollectionAsync(domain);
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Stage 3: Embed
+                var batchProgress = new Progress<(int done, int total)>(p =>
+                    progress?.Report($"Embedding batch {p.done} of {p.total}..."));
+
+                var vectors = await _embeddingService.EmbedBatchAsync(entries, batchProgress);
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Stage 4: Upsert
+                progress?.Report("Storing in Qdrant...");
+                await _vectorStore.UpsertBatchAsync(domain, entries, vectors);
+
+                progress?.Report($"Done — {entries.Count} entries indexed and searchable");
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Indexed {Count} entries into Qdrant domain '{Domain}'",
+                        entries.Count, domain);
+            }
+            catch (OperationCanceledException)
+            {
+                progress?.Report("Upload cancelled.");
+                _logger.LogWarning("Vector indexing cancelled for {File}", fileName);
+            }
+            catch (Exception ex)
+            {
+                // Never fail the upload — in-memory search still works
+                progress?.Report("Qdrant indexing failed — using local search.");
+                _logger.LogError(ex, "Vector store indexing failed for {File}", fileName);
+            }
         }
 
         _uploadHistory.Insert(0, record);

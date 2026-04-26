@@ -17,6 +17,9 @@
 
     <!-- Markdown rendering in Blazor -->
     <PackageReference Include="Markdig" Version="0.39.0" />
+
+    <!-- Qdrant vector store client -->
+    <PackageReference Include="Qdrant.Client" Version="1.12.0" />
   </ItemGroup>
 
   <!-- Copy sample logs to output -->

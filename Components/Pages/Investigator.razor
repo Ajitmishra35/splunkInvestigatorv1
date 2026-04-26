@@ -31,8 +31,20 @@
                            disabled="@_isUploading" />
                 @if (_isUploading)
                 {
-                    <span class="upload-icon">⏳</span>
-                    <span class="upload-text">Uploading...</span>
+                    <span class="upload-icon">@(_uploadProgressPct >= 100 ? "✅" : "⏳")</span>
+                    <span class="upload-text">@(_uploadStageMessage.Length > 0 ? _uploadStageMessage : "Uploading...")</span>
+                    @if (_uploadProgressPct > 0)
+                    {
+                        <div style="width:100%;background:#1e2736;border-radius:4px;height:6px;margin:6px 0 2px">
+                            <div style="width:@(_uploadProgressPct)%;background:#4a90d9;height:6px;border-radius:4px;transition:width 0.3s ease"></div>
+                        </div>
+                        <span class="upload-hint">@_uploadProgressPct%</span>
+                    }
+                    @if (_uploadCts is not null && _uploadProgressPct < 100)
+                    {
+                        <button class="clear-btn" style="margin-top:6px;font-size:0.7rem;padding:2px 8px"
+                                @onclick="CancelUpload" @onclick:stopPropagation="true">✕ Cancel</button>
+                    }
                 }
                 else
                 {
@@ -223,6 +235,10 @@
     private bool _isDragOver = false;
     private List<UploadedLogFile> _uploadHistory = [];
 
+    private CancellationTokenSource? _uploadCts;
+    private string _uploadStageMessage = string.Empty;
+    private int _uploadProgressPct = 0;
+
     private record QuickQuery(string Icon, string Label, string Query);
     private readonly List<QuickQuery> _quickQueries =
     [
@@ -245,29 +261,61 @@
 
     private async Task HandleFileUpload(InputFileChangeEventArgs e)
     {
-        _isUploading = true;
+        _isUploading     = true;
+        _uploadCts       = new CancellationTokenSource();
+        _uploadStageMessage = string.Empty;
+        _uploadProgressPct  = 0;
         StateHasChanged();
+
+        var progress = new Progress<string>(msg =>
+        {
+            _uploadStageMessage = msg;
+            _uploadProgressPct  = ParseProgressPct(msg);
+            InvokeAsync(StateHasChanged);
+        });
 
         foreach (var file in e.GetMultipleFiles(maximumFileCount: 10))
         {
-            // 50 MB max per file
-            await using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
-            var result = await LogService.AddUploadedLogsAsync(file.Name, stream);
-            // Show a system message in chat
-            _messages.Add(new ChatMessage
+            _uploadStageMessage = string.Empty;
+            _uploadProgressPct  = 0;
+
+            try
             {
-                Role = "assistant",
-                Content = result.Success
-                    ? $"✅ **{file.Name}** loaded — **{result.EntryCount} log entries** added to the search index."
-                    : $"⚠️ Failed to load **{file.Name}**: {result.ErrorMessage}"
-            });
+                // 50 MB max per file
+                await using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                var result = await LogService.AddUploadedLogsAsync(
+                    file.Name, stream, progress, _uploadCts.Token);
+
+                _messages.Add(new ChatMessage
+                {
+                    Role = "assistant",
+                    Content = result.Success
+                        ? $"✅ **{file.Name}** loaded — **{result.EntryCount} log entries** indexed and searchable."
+                        : $"⚠️ Failed to load **{file.Name}**: {result.ErrorMessage}"
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                _messages.Add(new ChatMessage
+                {
+                    Role = "assistant",
+                    Content = $"⚠️ Upload of **{file.Name}** was cancelled."
+                });
+                break;
+            }
         }
 
-        _isUploading = false;
-        _isDragOver = false;
+        _isUploading        = false;
+        _isDragOver         = false;
+        _uploadStageMessage = string.Empty;
+        _uploadProgressPct  = 0;
+        _uploadCts?.Dispose();
+        _uploadCts = null;
         _uploadHistory = LogService.UploadHistory.ToList();
         await RefreshStats();
     }
+
+    private void CancelUpload() => _uploadCts?.Cancel();
 
     private async Task RemoveFile(string fileName)
     {
@@ -406,4 +454,30 @@
 
     private static string TruncateName(string name, int max = 20)
         => name.Length <= max ? name : name[..17] + "...";
+
+    private static int ParseProgressPct(string msg) => msg switch
+    {
+        var m when m.StartsWith("Parsing file...") && !m.Contains("entries") => 5,
+        var m when m.Contains("entries found")                                => 15,
+        "Initializing collection..."                                          => 20,
+        var m when m.StartsWith("Embedding batch")                            => ParseEmbeddingPct(m),
+        "Storing in Qdrant..."                                                => 85,
+        var m when m.StartsWith("Done")                                       => 100,
+        var m when m.Contains("failed") || m.Contains("cancelled")           => 100,
+        _                                                                     => 0
+    };
+
+    private static int ParseEmbeddingPct(string msg)
+    {
+        // "Embedding batch 100 of 500..."
+        var parts = msg.Split(' ');
+        if (parts.Length >= 5
+            && int.TryParse(parts[2], out var done)
+            && int.TryParse(parts[4].TrimEnd('.'), out var total)
+            && total > 0)
+        {
+            return 20 + (int)(done * 65.0 / total);
+        }
+        return 50;
+    }
 }

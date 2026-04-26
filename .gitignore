@@ -9,4 +9,5 @@ run.log
 run.err.log
 appsettings.Development.json
 appsettings.Local.json
-
+publish/
+*.zip
